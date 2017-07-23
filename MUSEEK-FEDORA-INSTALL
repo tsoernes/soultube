@@ -1,0 +1,26 @@
+deps:
+libxml++-devel
+qt-devel
+swig
+libevent-devel
+
+
+fix bugs in course:
+ref: https://github.com/eLvErDe/museek-plus/issues/26
+replace museek-plus/searches.cpp museek-plus/chatrooms.cpp
+
+
+install:
+cmake .
+sudo make install
+
+
+install python bindings:
+cd python-bindings
+python install.py
+
+
+install pymucipher:
+cd Mucipher/PyMuciper
+python install.py
+
