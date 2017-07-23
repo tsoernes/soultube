@@ -1,0 +1,18 @@
+Parse youtube playlist
+Clean up search term
+    remove blacklisted words such as 'hd', 'hq', 'full', 'ft', 'vs', 'video', 'promo', 'official', 'music', 'records'
+		then empty parens
+    anything between brackets '[', ']'
+    remove special chars '&'
+Filter if tune already exists in target directory
+Search soulseek api
+    ignore locked downloads
+    priority heuristic (quality 320 > FLAC > 192 etc)
+    no results? retry with more aggressive filtering
+        removing anything between parenthesis
+        remove years (numbers between 1900-2100)
+        remove blacklisted word such as 'mix', 'remix', 'edit', 'original'
+
+launch museseek daemon
+modify museekcontrol
+
