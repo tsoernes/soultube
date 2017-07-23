@@ -323,6 +323,7 @@ for opts, args in opts:
                             Queue file: %s from %s" % (ufile, user)
                 else:
                     want = "downfolder"
+
                     ufile = ufile.replace("/", "\\")
                     print "Attempting to \
                             get folder contents: %s from %s" % (ufile, user)

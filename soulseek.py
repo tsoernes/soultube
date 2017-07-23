@@ -109,22 +109,6 @@ else:
     query = None
 
 
-def checkUrl(args):
-    url = str(args)
-    if url[:7] == "slsk://":
-        try:
-            user, ufile = urllib.url2pathname(url[7:]).split("/", 1)
-            ufile = ufile.replace("/", "\\")
-            return True
-        except Exception, e:
-            print e
-            return False
-    else:
-        print "Invalid soulseek url: %s. \
-                    Use the slsk://username//path format" % url
-        return False
-
-
 for opts, args in opts:
     if opts in ("-h", "--help"):
         usage()
@@ -177,8 +161,17 @@ for opts, args in opts:
             print "Invalid soulseek url: %s. Use the \
                     slsk://username//path format" % url
     elif opts in ("--abortdown", "--removedown", "--retrydown",):
-        if checkUrl:
-            want = opts[2:]
+        url = str(args)
+        if url[:7] == "slsk://":
+            try:
+                user, ufile = urllib.url2pathname(url[7:]).split("/", 1)
+                ufile = ufile.replace("/", "\\")
+            except Exception, e:
+                print e
+        else:
+            print "Invalid soulseek url: %s. \
+                        Use the slsk://username//path format" % url
+        want = opts[2:]
 
 museekcontrol_config = {
     "connection": {
@@ -328,7 +321,7 @@ class museekcontrol(driver.Driver):
             elif want == "downfolder":
                 if user != '':
                     s = ufile[:-1]
-                    self.send(messages.GetFolderContents(user, ufile))
+                    self.send(messages.GetFolderContents(user, s))
                 sys.exit()
             elif want == "gsearch":
                 if self.count == 0:
@@ -363,6 +356,7 @@ class museekcontrol(driver.Driver):
 
                 result_list = ticket, user, free, speed, queue, result[
                     0], result[1], result[2], result[3]
+                # TODO Cant we get out more useful info here?
                 # ticket, user, free, speed, queue, path, size, filetype, [bitrate, length]
                 # Count Search Result
                 self.search_number += 1
@@ -402,6 +396,14 @@ class museekcontrol(driver.Driver):
                        + str(queue) + " Speed: " + str(speed) + " Free: " +
                        free + " filetype: " + ftype)
                 output(" ")
+
+                # Example:
+                # Search: anahera Results from: User: Rtyom
+                # [50] slsk://Rtyom/@@scipc/Music/SoulSeek/complete/Beatport Trance Top 100 August 2015/05. Ferry Corsten Pres. Gouryella - Anahera (Original Mix).mp3
+                # Size: 17952KB Bitrate: 320 Length: 0:00 Queue: 7 Speed: 104793 Free: Y filetype: mp3
+                #
+                # [51] slsk://Rtyom/@@scipc/Music/SoulSeek/complete/Beatport Trance Top 100 August 2015/Ferry Corsten Pres. Gouryella - Anahera (Original Mix).mp3
+                # Size: 18009KB Bitrate: 320 Length: 0:00 Queue: 7 Speed: 104793 Free: Y filetype: mp3
 
     def cb_peer_stats(self, username, avgspeed, numdownloads, numfiles,
                       numdirs, slotsfull, country):

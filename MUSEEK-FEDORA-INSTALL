@@ -24,3 +24,11 @@ install pymucipher:
 cd Mucipher/PyMuciper
 python install.py
 
+
+remember to set variables in 
+'~/.museekd/config.xml' - server, username, password, interface password, download dir, incomplete dir
+'~/.museekd/museekcontrol.config' - interface password
+
+then run 'muscan' to share something. without something shared, most downloads will just queue
+
+start museek daemon: 'museekd'
