@@ -1,8 +1,8 @@
 #! /usr/bin/env python
 
-# museekcontrol -- command-line control of museekd
+# Soulseek batch downloader
 #
-# Copyright (C) 2006 daelstorm <daelstorm@gmail.com>
+# forked from daelstorm <daelstorm@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ except:
      a 'museek' subdirectory of the directory that contains the
      museekcontrol python scipt."""
 
-Version = "0.3.0"
+Version = "0.1.0"
 
 
 def output(s):
@@ -46,7 +46,6 @@ def output(s):
 parser = ConfigParser.ConfigParser()
 
 config_dir = str(os.path.expanduser("~/.museekd/"))
-
 config_file = config_dir + "museekcontrol.config"
 interface = None
 password = None
@@ -92,7 +91,7 @@ try:
     opts, args = getopt.getopt(sys.argv[1:], "hc:vi:p:j:l:p:m:b:tar", [
         "help", "config=", "interface=", "password=", "transfers",
         "monitor-transfers", "gs=", "gsearch=", "version", "log=",
-        "download=", "mt", "mtransfers", "abortdown=",
+        "autodownload", "download=", "mt", "mtransfers", "abortdown=",
         "retrydown=", "removedown=", "reloadshares", "disconnect",
         "connect"
     ])
@@ -107,6 +106,34 @@ else:
     want = None
     reason = None
     query = None
+
+
+def checkUrl(args):
+    url = str(args)
+    if url[:7] == "slsk://":
+        try:
+            user, ufile = urllib.url2pathname(url[7:]).split("/", 1)
+            return user, ufile
+        except Exception, e:
+            print e
+    else:
+        print "Invalid soulseek url: %s. \
+              Use the slsk://username//path format" % url
+
+
+def handleDownload(args):
+    user, ufile = checkUrl(args)
+    if ufile[-1] != "/":
+        want = "download"
+        ufile = ufile.replace("/", "\\")
+        print "Attempting to \
+                Queue file: %s from %s" % (ufile, user)
+    else:
+        want = "downfolder"
+        ufile = ufile.replace("/", "\\")
+        print "Attempting to \
+                get folder contents: %s from %s" % (ufile, user)
+    return want
 
 
 for opts, args in opts:
@@ -134,6 +161,9 @@ for opts, args in opts:
     elif opts in ("--gs", "--gsearch"):
         want = "gsearch"
         query = str(args)
+    elif opts in ("--ad", "--autodownload"):
+        want = "autodownload"
+        query = str(args)
     elif opts in ("--reloadshares"):
         want = "reloadshares"
     elif opts == "--connect":
@@ -141,37 +171,11 @@ for opts, args in opts:
     elif opts == "--disconnect":
         want = "disconnect"
     elif opts in ("--download"):
-        url = str(args)
-        if url[:7] == "slsk://":
-            try:
-                user, ufile = urllib.url2pathname(url[7:]).split("/", 1)
-                if ufile[-1] != "/":
-                    want = "download"
-                    ufile = ufile.replace("/", "\\")
-                    print "Attempting to \
-                            Queue file: %s from %s" % (ufile, user)
-                else:
-                    want = "downfolder"
-                    ufile = ufile.replace("/", "\\")
-                    print "Attempting to \
-                            get folder contents: %s from %s" % (ufile, user)
-            except Exception, e:
-                print e
-        else:
-            print "Invalid soulseek url: %s. Use the \
-                    slsk://username//path format" % url
-    elif opts in ("--abortdown", "--removedown", "--retrydown",):
-        url = str(args)
-        if url[:7] == "slsk://":
-            try:
-                user, ufile = urllib.url2pathname(url[7:]).split("/", 1)
-                ufile = ufile.replace("/", "\\")
-            except Exception, e:
-                print e
-        else:
-            print "Invalid soulseek url: %s. \
-                        Use the slsk://username//path format" % url
+        want = handleDownload(args)
+    elif opts in ("--abortdown", "--removedown", "--retrydown"):
+        user, ufile = checkUrl(args)
         want = opts[2:]
+
 
 museekcontrol_config = {
     "connection": {
@@ -318,6 +322,10 @@ class museekcontrol(driver.Driver):
                 if user != '':
                     self.send(messages.DownloadFile(user, ufile))
                 sys.exit()
+            elif want == "autodownload":
+                if self.count == 0:
+                    self
+                    self.count += 1
             elif want == "downfolder":
                 if user != '':
                     s = ufile[:-1]
@@ -345,7 +353,7 @@ class museekcontrol(driver.Driver):
         self.s_query[ticket] = query
 
     def cb_search_results(self, ticket, user, free, speed, queue, results):
-        if want in ("gsearch"):
+        if want in ("gsearch", "autodownload"):
             output("---------\nSearch: " + str(self.s_query[ticket]) +
                    " Results from: User: " + user)
 
@@ -444,37 +452,25 @@ class museekcontrol(driver.Driver):
     def cb_transfer_state(self, downloads, uploads):
         if want in ("mtransfers", "transfers"):
             for transfer in uploads:
-                print "Upload: slsk://%s/%s\nSize: %s\
-                        Pos: %s Rate: %s State: %s %s" % (
-                    transfer.user, transfer.path, transfer.filesize,
-                    transfer.filepos, transfer.rate,
-                    self.states[int(transfer.state)], transfer.error)
-                print "- - - - - - - - - - - - - - - -"
+                self.cb_transfer_update(transfer)
             for transfer in downloads:
-                print "Download: slsk://%s/%s\nSize: %s\
-                        Pos: %s Rate: %s State: %s %s" % (
-                    transfer.user, transfer.path, transfer.filesize,
-                    transfer.filepos, transfer.rate,
-                    self.states[int(transfer.state)], transfer.error)
-                print "- - - - - - - - - - - - - - - -"
+                self.cb_transfer_update(transfer)
         if want == "transfers":
             sys.exit()
 
     def cb_transfer_update(self, transfer):
-        if want == "mtransfers":
+        if want in ("mtransfers", "transfers"):
             if transfer.is_upload:
-                print "Upload: slsk://%s/%s\nSize: %s Pos:\
-                        %s Rate: %s State: %s %s" % (
-                    transfer.user, transfer.path, transfer.filesize,
-                    transfer.filepos, transfer.rate,
-                    self.states[int(transfer.state)], transfer.error)
-                print "- - - - - - - - - - - - - - - -"
+                print "Upload:",
             else:
-                print "Download: slsk://%s/%s\nSize: %s Pos:\
-                        %s Rate: %s State: %s %s" % (
-                    transfer.user, transfer.path, transfer.filesize,
-                    transfer.filepos, transfer.rate,
-                    self.states[int(transfer.state)], transfer.error)
+                print "Download:",
+
+            print " slsk://%s/%s\nSize: %s Pos:\
+                    %s Rate: %s State: %s %s" % (
+                transfer.user, transfer.path, transfer.filesize,
+                transfer.filepos, transfer.rate,
+                self.states[int(transfer.state)], transfer.error)
+            print "- - - - - - - - - - - - - - - -"
 
 
 if museekcontrol_config["connection"]["password"] is None:
