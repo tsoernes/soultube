@@ -62,6 +62,8 @@ Version: %s
 
     SEARCHING:
     --gs, --gsearch <query>     (Globally search for <query> & show results)
+    --ad, --autodownload <query>     (Globally search for <query> & \
+            autoselect a file for downloading)
 
     TRANSFERS:
     -t, --transfers         (Display all current up- and downloads)
@@ -106,6 +108,7 @@ else:
     want = None
     reason = None
     query = None
+    search_results = dict()
 
 
 def checkUrl(args):
@@ -119,6 +122,7 @@ def checkUrl(args):
     else:
         print "Invalid soulseek url: %s. \
               Use the slsk://username//path format" % url
+        sys.exit()
 
 
 def handleDownload(args):
@@ -127,13 +131,13 @@ def handleDownload(args):
         want = "download"
         ufile = ufile.replace("/", "\\")
         print "Attempting to \
-                Queue file: %s from %s" % (ufile, user)
+                download file: %s from %s" % (ufile, user)
     else:
         want = "downfolder"
         ufile = ufile.replace("/", "\\")
         print "Attempting to \
-                get folder contents: %s from %s" % (ufile, user)
-    return want
+                download folder contents: %s from %s" % (ufile, user)
+    return user, ufile, want
 
 
 for opts, args in opts:
@@ -149,9 +153,6 @@ for opts, args in opts:
     elif opts in ("-v", "--version"):
         print "Mulog version: %s" % Version
         sys.exit(2)
-    elif opts == "-b" or opts == "--browse":
-        want = "browse"
-        user = str(args)
     elif opts == "--minfo":
         want = "info"
     elif opts == "-t" or opts == "--transfers":
@@ -164,14 +165,10 @@ for opts, args in opts:
     elif opts in ("--ad", "--autodownload"):
         want = "autodownload"
         query = str(args)
-    elif opts in ("--reloadshares"):
-        want = "reloadshares"
-    elif opts == "--connect":
-        want = "connect"
-    elif opts == "--disconnect":
-        want = "disconnect"
     elif opts in ("--download"):
-        want = handleDownload(args)
+        user, ufile, want = handleDownload(args)
+    elif opts in ("--connect", "--disconnect", "--reloadshares"):
+        want = opts[2:]
     elif opts in ("--abortdown", "--removedown", "--retrydown"):
         user, ufile = checkUrl(args)
         want = opts[2:]
@@ -259,7 +256,6 @@ class museekcontrol(driver.Driver):
         driver.Driver.__init__(self)
         self.s_query = {}
         self.search_number = 0
-        self.count = 0
         self.connected = 0
         self.states = {
             0: "Finished",
@@ -303,15 +299,8 @@ class museekcontrol(driver.Driver):
                 print "Nothing to be done, exiting"
                 sys.exit()
             elif want == "stats":
-                if self.count == 0:
-                    if user is not None:
-                        self.send(messages.PeerStats(user))
-                    self.count += 1
-            elif want == "browse":
-                if self.count == 0:
-                    if user is not None:
-                        self.send(messages.UserShares(user))
-                    self.count += 1
+                if user is not None:
+                    self.send(messages.PeerStats(user))
             elif want == "connect":
                 self.send(messages.ConnectServer())
                 sys.exit()
@@ -323,18 +312,18 @@ class museekcontrol(driver.Driver):
                     self.send(messages.DownloadFile(user, ufile))
                 sys.exit()
             elif want == "autodownload":
-                if self.count == 0:
-                    self
-                    self.count += 1
+                self.send(messages.Search(0, query))
+                # TODO wait for a set time, then find best result and download it
+                # user, ufile = handleDownload(url)
+                if user != '':
+                    self.send(messages.DownloadFile(user, ufile))
             elif want == "downfolder":
                 if user != '':
                     s = ufile[:-1]
                     self.send(messages.GetFolderContents(user, s))
                 sys.exit()
             elif want == "gsearch":
-                if self.count == 0:
-                    self.send(messages.Search(0, query))
-                    self.count += 1
+                self.send(messages.Search(0, query))
             elif want == "abortdown":
                 self.send(messages.TransferAbort(0, user, ufile))
                 sleep(1)
@@ -357,15 +346,16 @@ class museekcontrol(driver.Driver):
             output("---------\nSearch: " + str(self.s_query[ticket]) +
                    " Results from: User: " + user)
 
+            # this should be top level as the callback is called once per user with results
+            user_results = []
             for result in results:
-                result_list = []
-                # Create Result List for future use
-                # clear it next interation
-
-                result_list = ticket, user, free, speed, queue, result[
-                    0], result[1], result[2], result[3]
+                # user, free, speed, queue,
+                # path, size, filetype, [bitrate, length]
+                result_info = user, free, speed, queue, \
+                        result[0], result[1], result[2], result[3]
+                if free:
+                    user_results += result_info
                 # TODO Cant we get out more useful info here?
-                # ticket, user, free, speed, queue, path, size, filetype, [bitrate, length]
                 # Count Search Result
                 self.search_number += 1
                 # Display Search Result
@@ -374,25 +364,22 @@ class museekcontrol(driver.Driver):
                 size = str(result[1] / 1024) + 'KB'
                 ftype = result[2]
 
-                if ftype in ('mp3', 'ogg'):
-                    if result[3] != []:
-                        bitrate = result[3][0]
-                        length = result[3][1]
-                        minutes = int(length) / 60
-                        seconds = str(length - (60 * minutes))
+                if ftype in ('mp3', 'ogg') & result[3] != []:
+                    bitrate = result[3][0]
+                    length = result[3][1]
+                    minutes = int(length) / 60
+                    seconds = str(length - (60 * minutes))
 
-                        if len(seconds) < 2:
-                            seconds = '0' + seconds
-                    else:
-                        bitrate = 'None'
-                        minutes = '00'
-                        seconds = '00'
-                        length = 0
+                    output("r32: %s" % result[3][2])
+                    if len(seconds) < 2:
+                        seconds = '0' + seconds
                 else:
+                    output("brate: %s len %s" % result[3][0], result[3][1])
                     bitrate = 'None'
                     minutes = '00'
                     seconds = '00'
                     length = 0
+
                 if free:
                     free = 'Y'
                 else:
@@ -400,9 +387,9 @@ class museekcontrol(driver.Driver):
                 output("[%s] slsk://%s/%s" % (str(self.search_number), user,
                                               path.replace("\\", "/")))
                 output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
-                       " Length: " + str(minutes) + ":" + seconds + " Queue: "
-                       + str(queue) + " Speed: " + str(speed) + " Free: " +
-                       free + " filetype: " + ftype)
+                       " Length: " + str(minutes) + ":" + seconds +
+                       " Queue: " + str(queue) + " Speed: " + str(speed) +
+                       " Free: " + free + " filetype: " + ftype)
                 output(" ")
 
                 # Example:
@@ -412,6 +399,7 @@ class museekcontrol(driver.Driver):
                 #
                 # [51] slsk://Rtyom/@@scipc/Music/SoulSeek/complete/Beatport Trance Top 100 August 2015/Ferry Corsten Pres. Gouryella - Anahera (Original Mix).mp3
                 # Size: 18009KB Bitrate: 320 Length: 0:00 Queue: 7 Speed: 104793 Free: Y filetype: mp3
+            search_results[ticket] += user_results
 
     def cb_peer_stats(self, username, avgspeed, numdownloads, numfiles,
                       numdirs, slotsfull, country):
