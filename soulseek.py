@@ -358,14 +358,14 @@ class museekcontrol(driver.Driver):
                    % (str(self.s_query[ticket]), str(self.search_number),
                       str(self.search_number+len(results)), user))
             self.search_number += len(results)
-            user_results = []
+            # user_results = []
             for result in results:
                 # user, free, speed, queue,
                 # path, size, filetype, [bitrate, length]
-                result_info = user, free, speed, queue, \
-                       result[0], result[1], result[2], result[3]
-                if free:
-                    user_results += result_info
+                # result_info = user, free, speed, queue, \
+                #        result[0], result[1], result[2], result[3]
+                # if free:
+                    # user_results += result_info
 
                 path = result[0]
                 size_kb = result[1] / 1024
@@ -402,7 +402,7 @@ class museekcontrol(driver.Driver):
                        " Queue: " + str(queue) + " Speed: " + str(speed) +
                        " Free: " + free)
                 output(" ")
-            search_results[ticket] += user_results
+            # search_results[ticket] += user_results
 
     def cb_disconnected(self):
         self.connected = 0
