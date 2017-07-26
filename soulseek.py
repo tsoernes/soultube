@@ -386,7 +386,7 @@ class museekcontrol(driver.Driver):
                 ftype = result[2]
 
                 if len(result) > 3:
-                    if result[3] is list:
+                    if type(result[3]) is list:
                         if len(result[3] > 1):
                             bitrate = result[3][0]
                             if len(result[3] > 2):
@@ -400,14 +400,14 @@ class museekcontrol(driver.Driver):
                             bitrate = "None"
                     else:
                         print "Unkonwn metadata: " + str(result[3])
-                        bitrate = 'None'
+                        bitrate = "None"
                         length = "0"
                 else:
-                    bitrate = 'None'
+                    bitrate = "None"
                     length = "0"
 
                 minutes = int(length) / 60
-                seconds = str(length - (60 * minutes))
+                seconds = str(int(length) - (60 * minutes))
 
                 if len(seconds) < 2:
                     seconds = '0' + seconds
