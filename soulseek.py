@@ -411,7 +411,7 @@ class museekcontrol(driver.Driver):
                 output("[%s] slsk://%s/%s" % (str(self.search_number), user,
                                               path.replace("\\", "/")))
                 output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
-                       " Length: " + str(minutes) + ":" + (seconds) +
+                       " Length: " + str(minutes) + ":" + str(seconds) +
                        " Queue: " + str(queue) + " Speed: " + str(speed) +
                        " Free: " + free + " filetype: " + ftype)
                 output(" ")
