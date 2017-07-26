@@ -256,7 +256,6 @@ class museekcontrol(driver.Driver):
         driver.Driver.__init__(self)
         self.s_query = {}
         self.search_number = 0
-        self.count = 0
         self.connected = 0
         self.states = {
             0: "Finished",
@@ -324,9 +323,7 @@ class museekcontrol(driver.Driver):
                     self.send(messages.GetFolderContents(user, s))
                 sys.exit()
             elif want == "gsearch":
-                if self.count == 0:
-                    self.count += 1
-                    self.send(messages.Search(0, query))
+                self.send(messages.Search(0, query))
             elif want == "abortdown":
                 self.send(messages.TransferAbort(0, user, ufile))
                 sleep(1)
@@ -367,7 +364,7 @@ class museekcontrol(driver.Driver):
                 size = str(result[1] / 1024) + 'KB'
                 ftype = result[2]
 
-                if ftype in ('mp3', 'ogg') & result[3] != []:
+                if ftype in ('mp3', 'ogg') and result[3] != []:
                     bitrate = result[3][0]
                     length = result[3][1]
                     minutes = int(length) / 60
@@ -377,7 +374,7 @@ class museekcontrol(driver.Driver):
                     if len(seconds) < 2:
                         seconds = '0' + seconds
                 else:
-                    output("brate: %s len %s" % result[3][0], result[3][1])
+                    output("brate: %s len %s" % (result[3][0], result[3][1]))
                     bitrate = 'None'
                     minutes = '00'
                     seconds = '00'
