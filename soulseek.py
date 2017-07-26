@@ -1,8 +1,8 @@
 #! /usr/bin/env python
 
-# Soulseek batch downloader
-#
-# forked from daelstorm <daelstorm@gmail.com>
+# Soulseek automatic batch downloader
+# Author: tsoernes
+# Original author: museekcontrol - daelstorm <daelstorm@gmail.com>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -33,7 +33,8 @@ except:
      driver.py were not found. Please install them into your
      '/usr/lib/python2.X/site-packages/museek' directory, or place them in
      a 'museek' subdirectory of the directory that contains the
-     museekcontrol python scipt."""
+     museekcontrol python scipt. Try executing 'python install.py' in
+     the 'python-bindings' directory of museek."""
 
 Version = "0.1.0"
 
@@ -41,13 +42,6 @@ Version = "0.1.0"
 def output(s):
     print s
     sys.stdout.flush()
-
-
-def safe_get(l, idx, default):
-    try:
-        return l[idx]
-    except IndexError:
-        return default
 
 
 parser = ConfigParser.ConfigParser()
@@ -61,31 +55,29 @@ log_dir = None
 
 def usage():
     print(
-        """MuseekControl is a command-line script for Museek, the P2P Soulseek Daemon
-Author: daelstorm
+        """Soultube is a command-line script for Museek, the P2P Soulseek Daemon
+Author: tsoernes
+Forked from: MuseekControl by daelstorm
 Version: %s
     Default options: none
-    -c, --config <file>     (Use a different config file)
+    -c, --config <file>             (Use a different config file)
 
     SEARCHING:
-    --gs, --gsearch <query>     (Globally search for <query> & show results)
-    --ad, --autodownload <query>     (Globally search for <query> & \
+    --gs, --gsearch <query>         (Globally search for <query>, show results)
+    --ad, --autodownload <query>    (Globally search for <query> & \
             autoselect a file for downloading)
 
     TRANSFERS:
-    -t, --transfers         (Display all current up- and downloads)
-    --mt, --mtransfers      (Monitor transfers)
-    --download  slsk://user/path (Add file or dir to the download queue)
-    --abortdown slsk://user/path (Abort Download)
-    --removedown    slsk://user/path (Remove Download from queue)
-    --retrydown slsk://user/path (Retry Download)
+    -t, --transfers                 (Display all current up- and downloads)
+    --mt, --mtransfers              (Monitor transfers)
+    --download    slsk://user/path  (Add file or dir to the download queue)
+    --abortdown   slsk://user/path  (Abort Download)
+    --removedown  slsk://user/path  (Remove Download from queue)
+    --retrydown   slsk://user/path  (Retry Download)
 
     SERVER:
     --connect   (Connect to Serverl; Disconnect if already connected)
     --disconnect    (Disconnect from Server; Do not try to reconnect)
-
-    SHARES:
-    --reloadshares          (Reload Shares Databases)
 
     MUSEEK DAEMON LOGIN:
     -i, --interface <host:port|/socket.path> (Use a different interface)
@@ -101,7 +93,7 @@ try:
         "help", "config=", "interface=", "password=", "transfers",
         "monitor-transfers", "gs=", "gsearch=", "version", "log=",
         "autodownload", "download=", "mt", "mtransfers", "abortdown=",
-        "retrydown=", "removedown=", "reloadshares", "disconnect",
+        "retrydown=", "removedown=", "disconnect",
         "connect"
     ])
 except getopt.GetoptError:
@@ -158,7 +150,7 @@ for opts, args in opts:
     elif opts in ("-p", "--password"):
         password = str(os.path.expanduser(args))
     elif opts in ("-v", "--version"):
-        print "Mulog version: %s" % Version
+        print "Soultube version: %s" % Version
         sys.exit(2)
     elif opts == "--minfo":
         want = "info"
@@ -174,7 +166,7 @@ for opts, args in opts:
         query = str(args)
     elif opts in ("--download"):
         user, ufile, want = handleDownload(args)
-    elif opts in ("--connect", "--disconnect", "--reloadshares"):
+    elif opts in ("--connect", "--disconnect"):
         want = opts[2:]
     elif opts in ("--abortdown", "--removedown", "--retrydown"):
         user, ufile = checkUrl(args)
@@ -306,9 +298,6 @@ class museekcontrol(driver.Driver):
             if want is None or want == "":
                 print "Nothing to be done, exiting"
                 sys.exit()
-            elif want == "stats":
-                if user is not None:
-                    self.send(messages.PeerStats(user))
             elif want == "connect":
                 self.send(messages.ConnectServer())
                 sys.exit()
@@ -364,25 +353,19 @@ class museekcontrol(driver.Driver):
         return stat
 
     def cb_search_results(self, ticket, user, free, speed, queue, results):
-        if want in ("gsearch", "autodownload"):
-            output("---------\nSearch: " + str(self.s_query[ticket]) +
-                   " Results [%s-%s] from user: %s"
-                   % (str(self.search_number),
+        if want in ("gsearch", "autodownload") and len(results) > 0:
+            output("---------\nSearch: %s Results [%s-%s] from user: %s \n"
+                   % (str(self.s_query[ticket]), str(self.search_number),
                       str(self.search_number+len(results)), user))
             self.search_number += len(results)
-            # this should be top level as the callback is called
-            # once per user with results
-            # user_results = []
+            user_results = []
             for result in results:
                 # user, free, speed, queue,
                 # path, size, filetype, [bitrate, length]
-                # result_info = user, free, speed, queue, \
-                #        result[0], result[1], result[2], result[3]
-                # if free:
-                    # user_results += result_info
-                # TODO Cant we get out more useful info here?
-                # Count Search Result
-                # Display Search Result
+                result_info = user, free, speed, queue, \
+                       result[0], result[1], result[2], result[3]
+                if free:
+                    user_results += result_info
 
                 path = result[0]
                 size_kb = result[1] / 1024
@@ -400,6 +383,8 @@ class museekcontrol(driver.Driver):
                             length = result[3][1]
 
                 length = int(length)
+                # Attempt to calculate length if bitrate and size
+                # are given but length is not
                 if length < 10 and bitrate is not "None" and size_kb > 0:
                     length = size_kb / int(bitrate) * 8
                 minutes = length / 60
@@ -417,15 +402,7 @@ class museekcontrol(driver.Driver):
                        " Queue: " + str(queue) + " Speed: " + str(speed) +
                        " Free: " + free)
                 output(" ")
-
-                # Example:
-                # Search: anahera Results from: User: Rtyom
-                # [50] slsk://Rtyom/@@scipc/Music/SoulSeek/complete/Beatport Trance Top 100 August 2015/05. Ferry Corsten Pres. Gouryella - Anahera (Original Mix).mp3
-                # Size: 17952KB Bitrate: 320 Length: 0:00 Queue: 7 Speed: 104793 Free: Y filetype: mp3
-                #
-                # [51] slsk://Rtyom/@@scipc/Music/SoulSeek/complete/Beatport Trance Top 100 August 2015/Ferry Corsten Pres. Gouryella - Anahera (Original Mix).mp3
-                # Size: 18009KB Bitrate: 320 Length: 0:00 Queue: 7 Speed: 104793 Free: Y filetype: mp3
-            # search_results[ticket] += user_results
+            search_results[ticket] += user_results
 
     def cb_disconnected(self):
         self.connected = 0
