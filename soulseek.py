@@ -150,7 +150,7 @@ for opts, args in opts:
     elif opts in ("-p", "--password"):
         password = str(os.path.expanduser(args))
     elif opts in ("-v", "--version"):
-        print "Soultube version: %s" % Version
+        print "Mulog version: %s" % Version
         sys.exit(2)
     elif opts == "--minfo":
         want = "info"
@@ -298,6 +298,9 @@ class museekcontrol(driver.Driver):
             if want is None or want == "":
                 print "Nothing to be done, exiting"
                 sys.exit()
+            elif want == "stats":
+                if user is not None:
+                    self.send(messages.PeerStats(user))
             elif want == "connect":
                 self.send(messages.ConnectServer())
                 sys.exit()
