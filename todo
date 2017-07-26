@@ -1,7 +1,7 @@
 Parse youtube playlist
 Clean up search term
     remove blacklisted words such as 'hd', 'hq', 'full', 'ft', 'vs', 'video', 'promo', 'official', 'music', 'records'
-		then empty parens
+        then empty parens
     anything between brackets '[', ']'
     remove special chars '&'
 Filter if tune already exists in target directory
@@ -16,3 +16,8 @@ Search soulseek api
 launch museseek daemon
 modify museekcontrol
 
+Heuristic, decreasing order of priority:
+1. Highest bitrate mp3 so long as bitrate > 220
+2. FLAC
+3. Largest filesize mp3
+4. Any (should prioritize other file formats, aac, ogg and whatnot)

@@ -256,6 +256,7 @@ class museekcontrol(driver.Driver):
         driver.Driver.__init__(self)
         self.s_query = {}
         self.search_number = 0
+        self.count = 0
         self.connected = 0
         self.states = {
             0: "Finished",
@@ -323,7 +324,9 @@ class museekcontrol(driver.Driver):
                     self.send(messages.GetFolderContents(user, s))
                 sys.exit()
             elif want == "gsearch":
-                self.send(messages.Search(0, query))
+                if self.count == 0:
+                    self.count += 1
+                    self.send(messages.Search(0, query))
             elif want == "abortdown":
                 self.send(messages.TransferAbort(0, user, ufile))
                 sleep(1)
