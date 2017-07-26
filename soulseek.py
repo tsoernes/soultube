@@ -43,6 +43,13 @@ def output(s):
     sys.stdout.flush()
 
 
+def safe_get(l, idx, default):
+    try:
+        return l[idx]
+    except IndexError:
+        return default
+
+
 parser = ConfigParser.ConfigParser()
 
 config_dir = str(os.path.expanduser("~/.museekd/"))
@@ -378,21 +385,27 @@ class museekcontrol(driver.Driver):
                 size = str(result[1] / 1024) + 'KB'
                 ftype = result[2]
 
-                if ftype in ('mp3', 'ogg') and result[3] != []:
-                    bitrate = result[3][0]
-                    length = result[3][1]
-                    minutes = int(length) / 60
-                    seconds = str(length - (60 * minutes))
-
-                    output("r32: %s" % result[3][2])
-                    if len(seconds) < 2:
-                        seconds = '0' + seconds
+                if len(result) > 3:
+                    if len(result[3] > 1):
+                        bitrate = result[3][0]
+                        if len(result[3] > 2):
+                            length = result[3][1]
+                            if len(result[3] > 3):
+                                print "Additional metadata: " \
+                                        + str(result[3][2:])
+                        else:
+                            length = "0"
+                    else:
+                        bitrate = "None"
                 else:
-                    output("brate: %s len %s" % (result[3][0], result[3][1]))
                     bitrate = 'None'
-                    minutes = '00'
-                    seconds = '00'
-                    length = 0
+                    length = "0"
+
+                minutes = int(length) / 60
+                seconds = str(length - (60 * minutes))
+
+                if len(seconds) < 2:
+                    seconds = '0' + seconds
 
                 if free:
                     free = 'Y'
