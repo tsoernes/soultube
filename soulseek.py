@@ -20,6 +20,7 @@
 
 import sys
 import urllib
+import time
 import os
 import select
 import getopt
@@ -40,7 +41,7 @@ Version = "0.1.0"
 
 
 def output(s):
-    print s
+    print str(s)
     sys.stdout.flush()
 
 
@@ -51,6 +52,7 @@ config_file = config_dir + "museekcontrol.config"
 interface = None
 password = None
 log_dir = None
+search_time = 10  # Seconds
 
 
 def usage():
@@ -117,10 +119,11 @@ def checkUrl(args):
             user, ufile = urllib.url2pathname(url[7:]).split("/", 1)
             return user, ufile
         except Exception, e:
+            print "CheckUrl Exception"
             print e
     else:
-        print "Invalid soulseek url: %s. \
-              Use the slsk://username//path format" % url
+        print("Invalid soulseek url: %s. \
+              Use the slsk://username//path format" % url)
         sys.exit()
 
 
@@ -129,13 +132,13 @@ def handleDownload(args):
     if ufile[-1] != "/":
         want = "download"
         ufile = ufile.replace("/", "\\")
-        print "Attempting to \
-                download file: %s from %s" % (ufile, user)
+        output("Attempting to \
+                download file: %s from %s" % (ufile, user))
     else:
         want = "downfolder"
         ufile = ufile.replace("/", "\\")
-        print "Attempting to \
-                download folder contents: %s from %s" % (ufile, user)
+        output("Attempting to \
+                download folder contents: %s from %s" % (ufile, user))
     return user, ufile, want
 
 
@@ -254,6 +257,7 @@ class museekcontrol(driver.Driver):
     def __init__(self):
         driver.Driver.__init__(self)
         self.s_query = {}
+        self.s_ticket = {}
         self.search_number = 0
         self.connected = 0
         self.count = 0
@@ -287,6 +291,7 @@ class museekcontrol(driver.Driver):
                 | messages.EM_TRANSFERS | messages.EM_USERSHARES
                 | messages.EM_CONFIG)
         except Exception, e:
+            print "Could not connect to museek daemon. Run 'museekd'"
             print e
 
     def process(self):
@@ -314,12 +319,19 @@ class museekcontrol(driver.Driver):
                     self.send(messages.DownloadFile(user, ufile))
                 sys.exit()
             elif want == "autodownload":
+                # Do a search for given query
+                print("Searching for %s seconds", search_time)
                 self.send(messages.Search(0, query))
-                # TODO wait for a set time,
-                # then find best result and download it
-                # user, ufile = handleDownload(url)
-                if user != '':
-                    self.send(messages.DownloadFile(user, ufile))
+                # Wait until a certain time has passed or until some number
+                # of results have been found
+                time.sleep(search_time)
+                # Select the best result and download it
+                search_ticket = self.s_ticker[query]
+                choice = search_results[search_ticket][0]
+                print("Choice: " + str(choice))
+                choice_user = choice[0]
+                choice_ufile = choice[1]
+                self.send(messages.DownloadFile(choice_user, choice_ufile))
             elif want == "downfolder":
                 if user != '':
                     s = ufile[:-1]
@@ -346,7 +358,9 @@ class museekcontrol(driver.Driver):
         sleep(0.001)
 
     def cb_search_ticket(self, query, ticket):
+        search_results[ticket] = []
         self.s_query[ticket] = query
+        self.s_ticket[query] = ticket
 
     def status_check(self, status):
         if status == 0:
@@ -358,56 +372,55 @@ class museekcontrol(driver.Driver):
         return stat
 
     def cb_search_results(self, ticket, user, free, speed, queue, results):
-        if want in ("gsearch", "autodownload") and len(results) > 0:
+        if want == "gsearch" and len(results) > 0:
             output("---------\nSearch: %s Results [%s-%s] from user: %s \n"
                    % (str(self.s_query[ticket]), str(self.search_number),
                       str(self.search_number+len(results)), user))
             self.search_number += len(results)
-            # user_results = []
-            for result in results:
-                # user, free, speed, queue,
-                # path, size, filetype, [bitrate, length]
-                # result_info = user, free, speed, queue, \
-                #        result[0], result[1], result[2], result[3]
-                # if free:
-                    # user_results += result_info
+        user_results = []
+        for result in results:
+            path = result[0]
+            size_kb = result[1] / 1024
+            if size_kb > 1000:
+                size = str(size_kb / 1024) + 'MB'
+            else:
+                size = str(size_kb) + 'KB'
 
-                path = result[0]
-                size_kb = result[1] / 1024
-                if size_kb > 1000:
-                    size = str(size_kb / 1024) + 'MB'
-                else:
-                    size = str(size_kb) + 'KB'
+            bitrate = "None"
+            length = "0"
+            if len(result) > 3:
+                if len(result[3]) > 0:
+                    bitrate = result[3][0]
+                    if len(result[3]) > 1:
+                        length = result[3][1]
 
-                bitrate = "None"
-                length = "0"
-                if len(result) > 3:
-                    if len(result[3]) > 0:
-                        bitrate = result[3][0]
-                        if len(result[3]) > 1:
-                            length = result[3][1]
+            length = int(length)
+            # Attempt to calculate length if bitrate and size
+            # are given but length is not
+            if length < 10 and bitrate is not "None" and size_kb > 0:
+                length = size_kb / int(bitrate) * 8
+            minutes = length / 60
+            seconds = str(length - (60 * minutes))
+            if len(seconds) < 2:
+                seconds = '0' + seconds + 's'
 
-                length = int(length)
-                # Attempt to calculate length if bitrate and size
-                # are given but length is not
-                if length < 10 and bitrate is not "None" and size_kb > 0:
-                    length = size_kb / int(bitrate) * 8
-                minutes = length / 60
-                seconds = str(length - (60 * minutes))
-                if len(seconds) < 2:
-                    seconds = '0' + seconds + 's'
+            result_info = user, path, free, speed, queue, \
+                result[1], result[2], result[3]
+            if free:
+                user_results += result_info
 
-                if free:
-                    free = 'Y'
-                else:
-                    free = 'N'
+            if free:
+                free = 'Y'
+            else:
+                free = 'N'
+            if want == "gsearch":
                 output("slsk://%s/%s" % (user, path.replace("\\", "/")))
                 output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
                        " Length: " + str(minutes) + ":" + seconds +
                        " Queue: " + str(queue) + " Speed: " + str(speed) +
                        " Free: " + free)
                 output(" ")
-            # search_results[ticket] += user_results
+        search_results[ticket] += user_results
 
     def cb_disconnected(self):
         self.connected = 0
@@ -472,7 +485,8 @@ def start():
                 c.connect()
             c.process()
     except Exception, e:
-        print e
+        print("Socket connection attempt exception")
+        print(e)
 
 
 start()

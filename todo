@@ -21,3 +21,5 @@ Heuristic, decreasing order of priority:
 2. FLAC
 3. Largest filesize mp3
 4. Any (should prioritize other file formats, aac, ogg and whatnot)
+
+m4a
