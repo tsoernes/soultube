@@ -383,11 +383,11 @@ class museekcontrol(driver.Driver):
                 # Display Search Result
 
                 path = result[0]
-                size_i = result[1] / 1024
-                if size_i > 1000:
-                    size = str(size_i / 1024) + 'MB'
+                size_kb = result[1] / 1024
+                if size_kb > 1000:
+                    size = str(size_kb / 1024) + 'MB'
                 else:
-                    size = str(size_i) + 'KB'
+                    size = str(size_kb) + 'KB'
                 ftype = result[2]
 
                 bitrate = "None"
@@ -397,15 +397,12 @@ class museekcontrol(driver.Driver):
                         bitrate = result[3][0]
                         if len(result[3]) > 1:
                             length = result[3][1]
-                            if len(result[3]) > 2:
-                                print "Additional metadata: " \
-                                        + str(result[3][2:])
 
-                minutes = int(length) / 60
-                seconds = str(int(length) - (60 * minutes))
-
-                if len(seconds) < 2:
-                    seconds = '0' + seconds
+                length = int(length)
+                if length < 10 and bitrate is not "None" and size_kb > 0:
+                    length = size_kb / int(bitrate) * 8
+                minutes = length / 60
+                seconds = length - (60 * minutes)
 
                 if free:
                     free = 'Y'
@@ -414,7 +411,7 @@ class museekcontrol(driver.Driver):
                 output("[%s] slsk://%s/%s" % (str(self.search_number), user,
                                               path.replace("\\", "/")))
                 output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
-                       " Length: " + str(minutes) + ":" + seconds +
+                       " Length: " + str(minutes) + ":" + (seconds) +
                        " Queue: " + str(queue) + " Speed: " + str(speed) +
                        " Free: " + free + " filetype: " + ftype)
                 output(" ")
