@@ -341,6 +341,15 @@ class museekcontrol(driver.Driver):
     def cb_search_ticket(self, query, ticket):
         self.s_query[ticket] = query
 
+    def status_check(self, status):
+        if status == 0:
+            stat = "Offline"
+        elif status == 1:
+            stat = "Away"
+        elif status == 2:
+            stat = "Online"
+        return stat
+
     def cb_search_results(self, ticket, user, free, speed, queue, results):
         if want in ("gsearch", "autodownload"):
             output("---------\nSearch: " + str(self.s_query[ticket]) +
@@ -400,17 +409,6 @@ class museekcontrol(driver.Driver):
                 # [51] slsk://Rtyom/@@scipc/Music/SoulSeek/complete/Beatport Trance Top 100 August 2015/Ferry Corsten Pres. Gouryella - Anahera (Original Mix).mp3
                 # Size: 18009KB Bitrate: 320 Length: 0:00 Queue: 7 Speed: 104793 Free: Y filetype: mp3
             search_results[ticket] += user_results
-
-    def cb_peer_stats(self, username, avgspeed, numdownloads, numfiles,
-                      numdirs, slotsfull, country):
-        if want == "stats":
-            if user == username:
-                output(
-                    "Peer Stats for: %s \nSpeed: %s \tDownloads: %s\
-                            \nFiles: %s \tDirectories: %s"
-                    % (user, avgspeed, numdownloads, numfiles, numdirs))
-                output("")
-                sys.exit()
 
     def cb_disconnected(self):
         self.connected = 0
