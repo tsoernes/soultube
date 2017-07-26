@@ -321,7 +321,8 @@ class museekcontrol(driver.Driver):
                 sys.exit()
             elif want == "autodownload":
                 self.send(messages.Search(0, query))
-                # TODO wait for a set time, then find best result and download it
+                # TODO wait for a set time,
+                # then find best result and download it
                 # user, ufile = handleDownload(url)
                 if user != '':
                     self.send(messages.DownloadFile(user, ufile))
@@ -382,29 +383,23 @@ class museekcontrol(driver.Driver):
                 # Display Search Result
 
                 path = result[0]
-                size = str(result[1] / 1024) + 'KB'
+                size_i = result[1] / 1024
+                if size_i > 1000:
+                    size = str(size_i / 1024) + 'MB'
+                else:
+                    size = str(size_i) + 'KB'
                 ftype = result[2]
 
+                bitrate = "None"
+                length = "0"
                 if len(result) > 3:
-                    if type(result[3]) is list:
+                    if len(result[3]) > 0:
+                        bitrate = result[3][0]
                         if len(result[3]) > 1:
-                            bitrate = result[3][0]
+                            length = result[3][1]
                             if len(result[3]) > 2:
-                                length = result[3][1]
-                                if len(result[3]) > 3:
-                                    print "Additional metadata: " \
-                                            + str(result[3][2:])
-                            else:
-                                length = "0"
-                        else:
-                            bitrate = "None"
-                    else:
-                        print "Unkonwn metadata: " + str(result[3])
-                        bitrate = "None"
-                        length = "0"
-                else:
-                    bitrate = "None"
-                    length = "0"
+                                print "Additional metadata: " \
+                                        + str(result[3][2:])
 
                 minutes = int(length) / 60
                 seconds = str(int(length) - (60 * minutes))
