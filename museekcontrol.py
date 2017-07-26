@@ -323,7 +323,6 @@ for opts, args in opts:
                             Queue file: %s from %s" % (ufile, user)
                 else:
                     want = "downfolder"
-
                     ufile = ufile.replace("/", "\\")
                     print "Attempting to \
                             get folder contents: %s from %s" % (ufile, user)
@@ -938,7 +937,7 @@ class museekcontrol(driver.Driver):
     def cb_login_ok(self):
         self.connected = 1
         self.invalidpass = 0
-        #print "Logging in..."
+        print "Logging in"
 
     def cb_server_state(self, state, username):
         if state:

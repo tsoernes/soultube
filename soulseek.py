@@ -339,6 +339,8 @@ class museekcontrol(driver.Driver):
                 self.send(messages.DownloadFile(user, ufile))
                 sleep(1)
                 sys.exit()
+            else:
+                print "Got unhandled want:" + want
         sleep(0.001)
 
     def cb_search_ticket(self, query, ticket):
@@ -359,14 +361,14 @@ class museekcontrol(driver.Driver):
                    " Results from: User: " + user)
 
             # this should be top level as the callback is called once per user with results
-            user_results = []
+            # user_results = []
             for result in results:
                 # user, free, speed, queue,
                 # path, size, filetype, [bitrate, length]
-                result_info = user, free, speed, queue, \
-                        result[0], result[1], result[2], result[3]
-                if free:
-                    user_results += result_info
+                # result_info = user, free, speed, queue, \
+                #        result[0], result[1], result[2], result[3]
+                # if free:
+                    # user_results += result_info
                 # TODO Cant we get out more useful info here?
                 # Count Search Result
                 self.search_number += 1
@@ -411,7 +413,7 @@ class museekcontrol(driver.Driver):
                 #
                 # [51] slsk://Rtyom/@@scipc/Music/SoulSeek/complete/Beatport Trance Top 100 August 2015/Ferry Corsten Pres. Gouryella - Anahera (Original Mix).mp3
                 # Size: 18009KB Bitrate: 320 Length: 0:00 Queue: 7 Speed: 104793 Free: Y filetype: mp3
-            search_results[ticket] += user_results
+            # search_results[ticket] += user_results
 
     def cb_disconnected(self):
         self.connected = 0
@@ -431,6 +433,7 @@ class museekcontrol(driver.Driver):
     def cb_login_ok(self):
         self.connected = 1
         self.invalidpass = 0
+        print "Logging in"
 
     def cb_server_state(self, state, username):
         if state:
