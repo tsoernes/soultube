@@ -369,7 +369,7 @@ class museekcontrol(driver.Driver):
                    " Results [%s-%s] from user: %s"
                    % (str(self.search_number),
                       str(self.search_number+len(results)), user))
-            str(self.search_number)
+            self.search_number += len(results)
             # this should be top level as the callback is called
             # once per user with results
             # user_results = []
