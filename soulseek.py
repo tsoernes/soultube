@@ -387,11 +387,11 @@ class museekcontrol(driver.Driver):
 
                 if len(result) > 3:
                     if type(result[3]) is list:
-                        if len(result[3] > 1):
+                        if len(result[3]) > 1:
                             bitrate = result[3][0]
-                            if len(result[3] > 2):
+                            if len(result[3]) > 2:
                                 length = result[3][1]
-                                if len(result[3] > 3):
+                                if len(result[3]) > 3:
                                     print "Additional metadata: " \
                                             + str(result[3][2:])
                             else:
