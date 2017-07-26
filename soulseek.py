@@ -400,6 +400,8 @@ class museekcontrol(driver.Driver):
                             bitrate = "None"
                     else:
                         print "Unkonwn metadata: " + str(result[3])
+                        bitrate = 'None'
+                        length = "0"
                 else:
                     bitrate = 'None'
                     length = "0"
