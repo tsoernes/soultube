@@ -366,9 +366,12 @@ class museekcontrol(driver.Driver):
     def cb_search_results(self, ticket, user, free, speed, queue, results):
         if want in ("gsearch", "autodownload"):
             output("---------\nSearch: " + str(self.s_query[ticket]) +
-                   " Results from: User: " + user)
-
-            # this should be top level as the callback is called once per user with results
+                   " Results [%s-%s] from user: %s"
+                   % (str(self.search_number),
+                      str(self.search_number+len(results)), user))
+            str(self.search_number)
+            # this should be top level as the callback is called
+            # once per user with results
             # user_results = []
             for result in results:
                 # user, free, speed, queue,
@@ -379,7 +382,6 @@ class museekcontrol(driver.Driver):
                     # user_results += result_info
                 # TODO Cant we get out more useful info here?
                 # Count Search Result
-                self.search_number += 1
                 # Display Search Result
 
                 path = result[0]
@@ -388,7 +390,6 @@ class museekcontrol(driver.Driver):
                     size = str(size_kb / 1024) + 'MB'
                 else:
                     size = str(size_kb) + 'KB'
-                ftype = result[2]
 
                 bitrate = "None"
                 length = "0"
@@ -402,18 +403,19 @@ class museekcontrol(driver.Driver):
                 if length < 10 and bitrate is not "None" and size_kb > 0:
                     length = size_kb / int(bitrate) * 8
                 minutes = length / 60
-                seconds = length - (60 * minutes)
+                seconds = str(length - (60 * minutes))
+                if len(seconds) < 2:
+                    seconds = '0' + seconds + 's'
 
                 if free:
                     free = 'Y'
                 else:
                     free = 'N'
-                output("[%s] slsk://%s/%s" % (str(self.search_number), user,
-                                              path.replace("\\", "/")))
+                output("slsk://%s/%s" % (user, path.replace("\\", "/")))
                 output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
-                       " Length: " + str(minutes) + ":" + str(seconds) +
+                       " Length: " + str(minutes) + ":" + seconds +
                        " Queue: " + str(queue) + " Speed: " + str(speed) +
-                       " Free: " + free + " filetype: " + ftype)
+                       " Free: " + free)
                 output(" ")
 
                 # Example:
