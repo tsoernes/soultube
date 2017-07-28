@@ -383,7 +383,7 @@ class museekcontrol(driver.Driver):
         user_results = []
         for result in results:
             path = result[0]
-            ftype = path.split('.')[-1].toLower()
+            ftype = path.split('.')[-1].lower()
             size_kb = result[1] / 1024
             if size_kb > 1000:
                 size = str(size_kb / 1024) + 'MB'
