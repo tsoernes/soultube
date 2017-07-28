@@ -21,12 +21,12 @@
 import sys
 import urllib
 import time
+from multiprocessing import Process
 import os
 import select
 import getopt
 import ConfigParser
 from time import sleep
-
 try:
     from museek import messages, driver
 except:
@@ -52,7 +52,7 @@ config_file = config_dir + "museekcontrol.config"
 interface = None
 password = None
 log_dir = None
-search_time = 10  # Seconds
+search_time = 4  # Seconds
 
 
 def usage():
@@ -72,7 +72,7 @@ Version: %s
     TRANSFERS:
     -t, --transfers                 (Display all current up- and downloads)
     --mt, --mtransfers              (Monitor transfers)
-    --download    slsk://user/path  (Add file or dir to the download queue)
+    --dl, --download slsk://user/path  (Add file or dir to the download queue)
     --abortdown   slsk://user/path  (Abort Download)
     --removedown  slsk://user/path  (Remove Download from queue)
     --retrydown   slsk://user/path  (Retry Download)
@@ -94,7 +94,8 @@ try:
     opts, args = getopt.getopt(sys.argv[1:], "hc:vi:p:j:l:p:m:b:tar", [
         "help", "config=", "interface=", "password=", "transfers",
         "monitor-transfers", "gs=", "gsearch=", "version", "log=",
-        "autodownload", "download=", "mt", "mtransfers", "abortdown=",
+        "ad=", "autodownload=", "dl=", "download=", "mt", "mtransfers",
+        "abortdown=",
         "retrydown=", "removedown=", "disconnect",
         "connect"
     ])
@@ -166,7 +167,7 @@ for opts, args in opts:
     elif opts in ("--ad", "--autodownload"):
         want = "autodownload"
         query = str(args)
-    elif opts in ("--download"):
+    elif opts in ("--dl", "--download"):
         user, ufile, want = handleDownload(args)
     elif opts in ("--connect", "--disconnect"):
         want = opts[2:]
@@ -255,8 +256,8 @@ update_config()
 class museekcontrol(driver.Driver):
     def __init__(self):
         driver.Driver.__init__(self)
-        self.s_query = {}
-        self.s_ticket = {}
+        self.s_query = {}   # Mapping from tickets to queries
+        self.s_ticket = {}  # Mapping from queries to tickets
         self.search_number = 0
         self.connected = 0
         self.count = 0
@@ -277,6 +278,25 @@ class museekcontrol(driver.Driver):
             13: "Aborted",
             14: "Not Shared"
         }
+
+    def auto_download(self):
+        # Wait until a certain time has passed or until some number
+        # of results have been found
+        # THIS SHOULD BE FORKED?
+        print("Starting autodownload")
+        time.sleep(search_time)
+        print("Sleep finished")
+        # # Select the best result and download it
+        # if p.isAlive():
+        #     p.terminate()
+        #     p.join()
+        search_ticket = self.s_ticket[query]
+        choice = search_results[search_ticket][0]
+        print("Selected %s from %s results" %
+              (choice, len(search_results[search_ticket])))
+        # choice_user = choice["user"]
+        # choice_ufile = choice["path"]
+        # self.send(messages.DownloadFile(choice_user, choice_ufile))
 
     def disconnect(self):
         driver.Driver.close(self)
@@ -318,21 +338,16 @@ class museekcontrol(driver.Driver):
                     self.send(messages.DownloadFile(user, ufile))
                 sys.exit()
             elif want == "autodownload":
+                if self.count != 0:
+                    return
+                self.count += 1
                 # Do a search for given query
-                print("Searching for %s seconds", search_time)
-                self.send(messages.Search(0, query))
-                # Wait until a certain time has passed or until some number
-                # of results have been found
-                # find out: are callbacks async by default?
-                # need to stop further searching after timeout
-                time.sleep(search_time)
-                # Select the best result and download it
-                search_ticket = self.s_ticker[query]
-                choice = search_results[search_ticket][0]
-                print("Choice: " + str(choice))
-                choice_user = choice["user"]
-                choice_ufile = choice["path"]
-                self.send(messages.DownloadFile(choice_user, choice_ufile))
+                print("Searching for %s seconds" % search_time)
+                msg = messages.Search(0, query)
+                self.send(msg)
+                p = Process(target=self.auto_download, args=())
+                p.start()
+                p.join()
             elif want == "downfolder":
                 if user != '':
                     s = ufile[:-1]
@@ -361,6 +376,7 @@ class museekcontrol(driver.Driver):
         sleep(0.001)
 
     def cb_search_ticket(self, query, ticket):
+        output("Mapped tickets")
         search_results[ticket] = []
         self.s_query[ticket] = query
         self.s_ticket[query] = ticket
@@ -374,8 +390,17 @@ class museekcontrol(driver.Driver):
             stat = "Online"
         return stat
 
+    def cb_server_privileges(self, time_left):
+        print "%i seconds of privileges left" % time_left
+
+    def cb_status_message(self, msg_type, msg):
+        print("Status message: %s, %s" % (msg_type, msg))
+
+    def cb_debug_message(self, msg_domain, msg):
+        print("Debug message: %s, %s" % (msg_domain, msg))
+
     def cb_search_results(self, ticket, user, free, speed, queue, results):
-        if want == "gsearch" and len(results) > 0:
+        if want in ("gsearch", "autodownload") and len(results) > 0:
             output("---------\nSearch: %s Results [%s-%s] from user: %s \n"
                    % (str(self.s_query[ticket]), str(self.search_number),
                       str(self.search_number+len(results)), user))
@@ -422,7 +447,7 @@ class museekcontrol(driver.Driver):
                 free = 'Y'
             else:
                 free = 'N'
-            if want == "gsearch":
+            if want in ("gsearch", "autodownload"):
                 output("slsk://%s/%s" % (user, path.replace("\\", "/")))
                 output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
                        " Length: " + str(minutes) + ":" + seconds +
@@ -453,9 +478,10 @@ class museekcontrol(driver.Driver):
 
     def cb_server_state(self, state, username):
         if state:
-            output("Connected to server, username: " + username)
+            output("Connected to server, username: %s (%s)"
+                   % (username, state))
         else:
-            output("Not connected to server")
+            output("Not connected to server (%s)" % state)
 
     def cb_transfer_state(self, downloads, uploads):
         if want in ("mtransfers", "transfers"):
@@ -494,7 +520,7 @@ def start():
                 c.connect()
             c.process()
     except Exception, e:
-        print("Socket connection attempt exception")
+        print("Socket connection attempt exception: ")
         print(e)
 
 
