@@ -23,3 +23,4 @@ Heuristic, decreasing order of priority:
 4. Any (should prioritize other file formats, aac, ogg and whatnot)
 
 m4a
+minimum filesize, allowed filetypes (.mp3, .flac, .ogg, .aac)

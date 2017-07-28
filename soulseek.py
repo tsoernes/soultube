@@ -132,13 +132,12 @@ def handleDownload(args):
     if ufile[-1] != "/":
         want = "download"
         ufile = ufile.replace("/", "\\")
-        output("Attempting to \
-                download file: %s from %s" % (ufile, user))
+        output("Attempting to download file: %s from %s" % (ufile, user))
     else:
         want = "downfolder"
         ufile = ufile.replace("/", "\\")
-        output("Attempting to \
-                download folder contents: %s from %s" % (ufile, user))
+        output("Attempting to download folder contents: %s from %s"
+               % (ufile, user))
     return user, ufile, want
 
 
@@ -324,13 +323,15 @@ class museekcontrol(driver.Driver):
                 self.send(messages.Search(0, query))
                 # Wait until a certain time has passed or until some number
                 # of results have been found
+                # find out: are callbacks async by default?
+                # need to stop further searching after timeout
                 time.sleep(search_time)
                 # Select the best result and download it
                 search_ticket = self.s_ticker[query]
                 choice = search_results[search_ticket][0]
                 print("Choice: " + str(choice))
-                choice_user = choice[0]
-                choice_ufile = choice[1]
+                choice_user = choice["user"]
+                choice_ufile = choice["path"]
                 self.send(messages.DownloadFile(choice_user, choice_ufile))
             elif want == "downfolder":
                 if user != '':
@@ -353,6 +354,8 @@ class museekcontrol(driver.Driver):
                 self.send(messages.DownloadFile(user, ufile))
                 sleep(1)
                 sys.exit()
+            elif want in ("transfers", "mtransfers"):
+                pass
             else:
                 print "Got unhandled want:" + want
         sleep(0.001)
@@ -380,6 +383,7 @@ class museekcontrol(driver.Driver):
         user_results = []
         for result in results:
             path = result[0]
+            ftype = path.split('.')[-1].toLower()
             size_kb = result[1] / 1024
             if size_kb > 1000:
                 size = str(size_kb / 1024) + 'MB'
@@ -404,12 +408,17 @@ class museekcontrol(driver.Driver):
             if len(seconds) < 2:
                 seconds = '0' + seconds + 's'
 
-            result_info = user, path, free, speed, queue, \
-                result[1], result[2], result[3]
+            result_info = {"user": user,
+                           "path": path,
+                           "ftype": ftype,
+                           "free": free,
+                           "speed": speed,
+                           "queue": queue,
+                           "size_kb": size_kb,
+                           "bitrate": bitrate,
+                           "length": length}
             if free:
                 user_results += result_info
-
-            if free:
                 free = 'Y'
             else:
                 free = 'N'
