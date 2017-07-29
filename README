@@ -1,0 +1,59 @@
+## How to run
+Provided that museek and dependencies are installed (see below).
+First, start museek daemon: 'museekd &'
+Then, to download a music file, run for example: `./soultube --ad "dire straits telegraph road"`
+
+
+## Install
+First, install museek with its python-bindings and mucipher.
+
+Museek is abandoned so installing will be troublesome.
+If you run into trouble during the install you might find fixes in some of museek's forks:
+https://github.com/eLvErDe/museek-plus/network
+
+
+Install Museek dependencies (for Fedora 26, will vary by distro):
+libxml++-devel
+qt-devel
+swig
+libevent-devel
+python-devel
+redhat-rpm-config
+
+
+Fix known Museek bugs:
+(ref: https://github.com/eLvErDe/museek-plus/issues/26)
+replace museek-plus/searches.cpp and museek-plus/chatrooms.cpp
+in the museek-plus source code directories with the corresponsing files
+from this repo
+
+
+Install (in museek-plus directory):
+cmake .
+sudo make install
+
+
+Install python bindings (in museek-plus directory):
+cd python-bindings
+sudo python setup.py install
+
+
+Install pymucipher (in museek-plus directory):
+cd Mucipher/PyMuciper
+sudo python setup.py install
+
+
+Configure museek:
+Either set the variables: server, username, password, interface password, download dir
+by running 'musetup'
+or setting the variables manually in the file '~/.museekd/config.xml'.
+
+Remember to share some music, or else you will often get permanently queued when downloading.
+Sharing folders can be done in either 'musetup' or 'muscan'.
+
+
+Configure soultube:
+Run soultube once (any parameter) so that a default config is created,
+then set interface password in the file '~/.museekd/soultube.config'.
+Here you can configure how soultube connects to the museekd daemon and 
+file selection heuristics.
