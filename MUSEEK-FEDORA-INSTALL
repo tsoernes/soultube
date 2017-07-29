@@ -3,6 +3,8 @@ libxml++-devel
 qt-devel
 swig
 libevent-devel
+python-devel
+redhat-rpm-config
 
 
 fix bugs in course:
@@ -17,12 +19,12 @@ sudo make install
 
 install python bindings:
 cd python-bindings
-python install.py
+sudo python setup.py install
 
 
 install pymucipher:
 cd Mucipher/PyMuciper
-python install.py
+sudo python setup.py install
 
 
 remember to set variables in 

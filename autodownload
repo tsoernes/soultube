@@ -19,7 +19,6 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 import sys
-import urllib
 import time
 from multiprocessing import Process
 import os
@@ -51,7 +50,7 @@ config_file = config_dir + "museekcontrol.config"
 interface = None
 password = None
 log_dir = None
-search_time = 4  # Seconds
+search_time = None
 
 
 def usage():
@@ -61,18 +60,17 @@ Author: tsoernes
 Forked from: MuseekControl by daelstorm
 Version: %s
     SEARCHING:
-    --gs, --gsearch <query>         (Globally search for <query>, show results)
-    --ad, --autodownload <query>    (Globally search for <query> & \
+    --ad,   --autodownload <query>      (Globally search for <query> & \
             autoselect a file for downloading)
 
     TRANSFERS:
-    -t, --transfers                 (Display all current up- and downloads)
-    --mt, --mtransfers              (Monitor transfers)
+    --t,    --transfers                 (Display all current up- and downloads)
+    --mt,   --mtransfers                (Monitor transfers)
 
     MUSEEK DAEMON LOGIN:
     -i, --interface <host:port|/socket.path> (Use a different interface)
-    -v, --version       (Display version and quit)
-    -h, --help          (Display this help and exit)
+    -v, --version                       (Display version and quit)
+    -h, --help                          (Display this help and exit)
     """ % Version)
     sys.exit(2)
 
@@ -80,7 +78,6 @@ Version: %s
 try:
     opts, args = getopt.getopt(sys.argv[1:], "hc:vi:p:j:l:p:m:b:tar", [
         "help", "version",
-        "gs=", "gsearch=",
         "ad=", "autodownload=",
         "t", "transfers",
         "mt", "mtransfers",
@@ -95,36 +92,9 @@ if len(opts) == 0:
 user = None
 want = None
 reason = None
-query = None
-search_results = dict()
 
 
-for opts, args in opts:
-    if opts in ("-h", "--help"):
-        usage()
-        sys.exit()
-    elif opts in ("-i", "--interface"):
-        interface = str(os.path.expanduser(args))
-    elif opts in ("-v", "--version"):
-        print "Soultube version: %s" % Version
-        sys.exit(2)
-    elif opts in ("--t", "--transfers"):
-        want = "transfers"
-    elif opts in ("--mt", "--mtransfers"):
-        want = "mtransfers"
-    elif opts in ("--gs", "--gsearch"):
-        want = "gsearch"
-        query = str(args)
-    elif opts in ("--ad", "--autodownload"):
-        want = "autodownload"
-        query = str(args)
-    elif opts in ("--connect", "--disconnect"):
-        want = opts[2:]
-    else:
-        print("Unknown opts")
-        sys.exit()
-
-
+# Defaults parameters
 museekcontrol_config = {
     "connection": {
         "interface": 'localhost:2240',
@@ -132,6 +102,9 @@ museekcontrol_config = {
     },
     "museekcontrol": {
         "log_dir": "~/.museekd/logs/"
+    },
+    "autodownload": {
+        "search_time": 30
     }
 }
 
@@ -156,7 +129,8 @@ def read_config():
     for i in parser.sections():
         for j in parser.options(i):
             val = parser.get(i, j, raw=1)
-            if j in ['login', 'password', 'interface', "log_dir"]:
+            if j in ['login', 'password', 'interface', 'log_dir',
+                     'search_time']:
                 museekcontrol_config[i][j] = val
             else:
                 try:
@@ -198,7 +172,8 @@ if password is not None:
     museekcontrol_config["connection"]["password"] = password
 if interface is not None:
     museekcontrol_config["connection"]["interface"] = interface
-
+if search_time is not None:
+    museekcontrol_config["autodownload"]["search_time"] = search_time
 update_config()
 
 
@@ -210,6 +185,7 @@ class museekcontrol(driver.Driver):
         self.search_number = 0
         self.connected = 0
         self.count = 0
+        self.search_results = dict()
         self.states = {
             0: "Finished",
             1: "Transferring",
@@ -228,7 +204,8 @@ class museekcontrol(driver.Driver):
             14: "Not Shared"
         }
 
-    def connect(self):
+    # Connect driver to museekd daemon
+    def connect_daemon(self):
         try:
             driver.Driver.connect(
                 self, museekcontrol_config["connection"]["interface"],
@@ -240,71 +217,44 @@ class museekcontrol(driver.Driver):
             print "Could not connect to museek daemon. Run 'museekd'"
             print e
 
-    def disconnect(self):
+    # Disconnect driver to museekd daemon
+    def disconnect_daemon(self):
         driver.Driver.close(self)
+
+    # Connect daemon to soulseek servers
+    def connect_server(self):
+        self.send(messages.ConnectServer())
+
+    # Disconnect daemon to soulseek servers
+    def disconnect_server(self):
+        self.send(messages.DisconnectServer())
 
     def process(self):
         d = 0
-        r, w, x = select.select([self.socket, sys.stdin], [], [self.socket], d)
+        r, _, _ = select.select([self.socket, sys.stdin], [], [self.socket], d)
         if self.socket in r:
             driver.Driver.process(self)
-        if self.connected == 1:
-            if want is None or want == "":
-                print "Nothing to be done, exiting"
-                sys.exit()
-            elif want == "connect":
-                self.send(messages.ConnectServer())
-                sys.exit()
-            elif want == "disconnect":
-                self.send(messages.DisconnectServer())
-                sys.exit()
-            elif want == "gsearch":
-                if self.count == 0:
-                    self.send(messages.Search(0, query))
-                    self.count += 1
-            elif want == "autodownload":
-                if self.count != 0:
-                    return
-                self.count += 1
-                # Do a search for given query
-                print("Searching for %s seconds" % search_time)
-                msg = messages.Search(0, query)
-                self.send(msg)
-                p = Process(target=self.auto_download, args=())
-                p.start()
-                p.join()
-            elif want in ("transfers", "mtransfers"):
-                pass
-            else:
-                print "Got unhandled want:" + want
-        sleep(0.001)
+        sleep(0.01)
 
     def cb_search_ticket(self, query, ticket):
         output("Mapped tickets")
-        search_results[ticket] = []
+        self.search_results[ticket] = []
         self.s_query[ticket] = query
         self.s_ticket[query] = ticket
-
-    def status_check(self, status):
-        if status == 0:
-            stat = "Offline"
-        elif status == 1:
-            stat = "Away"
-        elif status == 2:
-            stat = "Online"
-        return stat
 
     def cb_server_privileges(self, time_left):
         print "%i seconds of privileges left" % time_left
 
     def cb_status_message(self, msg_type, msg):
-        print("Status message: %s, %s" % (msg_type, msg))
+        print(msg)
 
     def cb_debug_message(self, msg_domain, msg):
         print("Debug message: %s, %s" % (msg_domain, msg))
 
     def cb_search_results(self, ticket, user, free, speed, queue, results):
-        if want in ("gsearch", "autodownload") and len(results) > 0:
+        if want not in ("gsearch", "autodownload"):
+            print("cb search res got called with unknown want")
+        if len(results) > 0:
             output("---------\nSearch: %s Results [%s-%s] from user: %s \n"
                    % (str(self.s_query[ticket]), str(self.search_number),
                       str(self.search_number+len(results)), user))
@@ -321,11 +271,10 @@ class museekcontrol(driver.Driver):
 
             bitrate = "None"
             length = "0"
-            if len(result) > 3:
-                if len(result[3]) > 0:
-                    bitrate = result[3][0]
-                    if len(result[3]) > 1:
-                        length = result[3][1]
+            if len(result) > 3 and len(result[3]) > 0:
+                bitrate = result[3][0]
+                if len(result[3]) > 1:
+                    length = result[3][1]
 
             length = int(length)
             # Attempt to calculate length if bitrate and size
@@ -333,7 +282,7 @@ class museekcontrol(driver.Driver):
             if length < 10 and bitrate is not "None" and size_kb > 0:
                 length = size_kb / int(bitrate) * 8
             minutes = length / 60
-            seconds = str(length - (60 * minutes))
+            seconds = str(length - (60 * minutes)) + 's'
             if len(seconds) < 2:
                 seconds = '0' + seconds + 's'
 
@@ -347,18 +296,17 @@ class museekcontrol(driver.Driver):
                            "bitrate": bitrate,
                            "length": length}
             if free:
-                user_results += result_info
+                user_results.append(result_info)
                 free = 'Y'
             else:
                 free = 'N'
-            if want in ("gsearch", "autodownload"):
-                output("slsk://%s/%s" % (user, path.replace("\\", "/")))
-                output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
-                       " Length: " + str(minutes) + ":" + seconds +
-                       " Queue: " + str(queue) + " Speed: " + str(speed) +
-                       " Free: " + free)
-                output(" ")
-        search_results[ticket] += user_results
+            output("slsk://%s/%s" % (user, path.replace("\\", "/")))
+            output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
+                   " Length: " + str(minutes) + ":" + seconds +
+                   " Queue: " + str(queue) + " Speed: " + str(speed) +
+                   " Free: " + free)
+            output(" ")
+        self.search_results[ticket] += user_results
 
     def cb_disconnected(self):
         self.connected = 0
@@ -368,25 +316,22 @@ class museekcontrol(driver.Driver):
     def cb_login_error(self, reason):
         self.connected = 0
         if reason == "INVPASS":
-            self.invalidpass = 1
-            print "couldn't log in: Invalid Password"
-            self.connect()
+            print "Couldn't log in: Invalid Password for daemon"
+            self.connect_daemon()
         else:
-            self.invalidpass = 0
-            print "couldn't log in: " + reason
+            print "Couldn't log in: " + reason
 
     def cb_login_ok(self):
         self.connected = 1
-        self.invalidpass = 0
-        print "Logging in"
+        print "Login OK"
 
     def cb_server_state(self, state, username):
         if state:
-            output("Connected to server, username: %s (%s)"
-                   % (username, state))
+            output("Connected to server as %s" % username)
         else:
-            output("Not connected to server (%s)" % state)
+            output("Not connected to server")
 
+    # Presumably, this is automatically called upon daemon connect
     def cb_transfer_state(self, downloads, uploads):
         if want in ("mtransfers", "transfers"):
             for transfer in uploads:
@@ -402,13 +347,43 @@ class museekcontrol(driver.Driver):
                 print "Upload:",
             else:
                 print "Download:",
-
             print " slsk://%s/%s\nSize: %s Pos:\
                     %s Rate: %s State: %s %s" % (
                 transfer.user, transfer.path, transfer.filesize,
                 transfer.filepos, transfer.rate,
                 self.states[int(transfer.state)], transfer.error)
             print "- - - - - - - - - - - - - - - -"
+
+    def search(self, query):
+        if self.connected == 1:
+            msg = messages.Search(0, query)
+            self.send(msg)
+        else:
+            print "Want search but not connected to daemon"
+
+    def download(self, user, ufile):
+        if self.connected == 1:
+            self.send(messages.DownloadFile(user, ufile))
+        else:
+            print "Want dl but not connected to daemon"
+
+    def autodownload(self, query):
+        if query not in self.s_ticket:
+            print "Query not in tickets"
+            return
+        search_ticket = self.s_ticket[query]
+        if search_ticket not in self.search_results:
+            print "Ticket not in search results"
+            return
+        results = self.search_results[search_ticket]
+        if not results:
+            print "No search results for query: " + query
+        choice = results[0]
+        print("Selected %s from %s results" %
+              (choice, len(results)))
+        choice_user = choice["user"]
+        choice_ufile = choice["path"]
+        self.send(messages.DownloadFile(choice_user, choice_ufile))
 
 
 if museekcontrol_config["connection"]["password"] is None:
@@ -417,36 +392,62 @@ if museekcontrol_config["connection"]["password"] is None:
 c = museekcontrol()
 
 
-def start():
+# Read continuosly from a socket to the museekd daemon and handle the results
+def start(duration=None):
+    if duration is not None:
+        t_end = time.time() + duration
     try:
-        while 1:
+        while duration is None or time.time() < t_end:
             if c.socket is None:
-                c.connect()
+                c.connect_daemon()
             c.process()
     except Exception, e:
         print("Socket connection attempt exception: ")
         print(e)
 
 
-start()
+c.connect_daemon()
+while not c.connected:
+    c.process()
+# TODO: How does this work with multiple opts? Maybe want to increase search
+# time as one param and autodownload as another etc.
+for opts, args in opts:
+    if opts in ("-h", "--help"):
+        usage()
+        sys.exit()
+    elif opts in ("-v", "--version"):
+        print "Soultube version: %s" % Version
+        sys.exit(2)
+    elif opts in ("--t", "--transfers"):
+        want = "transfers"
+        start()
+    elif opts in ("--mt", "--mtransfers"):
+        want = "mtransfers"
+        start()
+    elif opts in ("--ad", "--autodownload"):
+        query = str(args)
+        want = "autodownload"
+        c.search(query)
+        start(search_time)
+        print "Finished searching"
+        c.autodownload(query)
+        start()
+    elif opts in ("--connect"):
+        c.connect_server()
+        start()
+    elif opts in ("--disconnect"):
+        c.disconnect_server()
+        start()
+    else:
+        print("Unknown opts")
+        sys.exit()
 
-    def auto_download(self):
-        # Wait until a certain time has passed or until some number
-        # of results have been found
-        # THIS SHOULD BE FORKED?
-        print("Starting autodownload")
-        time.sleep(search_time)
-        print("Sleep finished")
-        # # Select the best result and download it
-        # if p.isAlive():
-        #     p.terminate()
-        #     p.join()
-        search_ticket = self.s_ticket[query]
-        choice = search_results[search_ticket][0]
-        print("Selected %s from %s results" %
-              (choice, len(search_results[search_ticket])))
-        # choice_user = choice["user"]
-        # choice_ufile = choice["path"]
-        # self.send(messages.DownloadFile(choice_user, choice_ufile))
-
-                    self.send(messages.DownloadFile(user, ufile))
+# TODO
+# 1) Don't download if file already exists
+#   - search slsk down folder first - is it possible to get this path from the daemon?
+#   - then search a specified music lib in museekcontrol config
+#   - implement exact match finder first, then fuzzy 
+# 2) File selection heuristic
+# 3) Multi-downloader
+#   - text file input, newline separated
+#   - youtube playlist?
