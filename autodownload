@@ -23,6 +23,7 @@ import time
 from multiprocessing import Process
 import os
 import select
+import re
 import getopt
 import ConfigParser
 from time import sleep
@@ -46,11 +47,13 @@ def output(s):
 
 parser = ConfigParser.ConfigParser()
 config_dir = str(os.path.expanduser("~/.museekd/"))
-config_file = config_dir + "museekcontrol.config"
+config_file = config_dir + "soultube.config"
 interface = None
 password = None
 log_dir = None
 search_time = None
+min_mp3_bitrate = 220
+fast_queuesize = 50
 
 
 def usage():
@@ -79,6 +82,7 @@ try:
     opts, args = getopt.getopt(sys.argv[1:], "hc:vi:p:j:l:p:m:b:tar", [
         "help", "version",
         "ad=", "autodownload=",
+        "adm=", "autodownloadmulti=",
         "t", "transfers",
         "mt", "mtransfers",
     ])
@@ -170,6 +174,81 @@ if search_time is not None:
 update_config()
 
 
+ignore_words = ['hd', 'hq', 'full', 'ft', 'vs', 'video', 'remix', 'mix',
+                'promo', 'official', 'music', 'records']
+
+
+def autodownload_init(queries):
+    s_time = eval(mconfig['autodownload']['search_time'])
+    print("Searching for %s seconds" % s_time)
+    queries_clean = []
+    for query in queries:
+        query_clean = filter_query(query)
+        print("Cleaned query from: %s to: %s" % (query, query_clean))
+        queries_clean.append(query_clean)
+    map(c.search, queries_clean)
+    start(s_time)
+    # can we do something here to stop printing results for
+    # the previously started search?
+    print "Finished searching"
+    map(c.autodownload, queries_clean)
+    start()
+
+
+def filter_query(query):
+    # Remove ignored words (case insensitive)
+    for word in ignore_words:
+        query = query.replace(word, '')
+        wrd_rgx = re.compile(re.escape(word), re.IGNORECASE)
+        query = wrd_rgx.sub('', query)
+    # Remove anything between brackets '[' and ']'
+    query = re.sub(r'\[[^)]*\]', '', query)
+    # Remove anything but alphanumeric characters and spaces
+    query = re.sub('\W+', ' ', query)
+    return query
+
+
+def get_queries(fpath):
+    if os.path.exists(fpath):
+        return open(fpath).read().splitlines()
+    else:
+        print("Invalid file path: " + fpath)
+        sys.exit()
+
+
+def select_file(results):
+    def filter_str(param, target):
+        return filter(lambda r: r[param].lower() in target, results)
+
+    def largest(li):
+        return max(li, key=lambda r: int(r["size"]))
+
+    # Select largest filsize mp3 with bitrate over 220; if any:
+    mp3s = filter_str("ftype", ["mp3"])
+    high_mp3s = filter(lambda r: int(r["bitrate"]) > min_mp3_bitrate, mp3s)
+    fast_high_mp3s = filter(lambda r: int(r["queue"]) < fast_queuesize,
+                            high_mp3s)
+    if len(high_mp3s) > 0:
+        if len(fast_high_mp3s) > 0:
+            print("Hit fast high mp3 heuristic")
+            return largest(fast_high_mp3s)
+        else:
+            print("Hit high mp3 heuristic")
+            return largest(high_mp3s)
+    # Select minimum queue FLAC, if any:
+    flacs = filter_str("ftype", ["flac"])
+    if len(flacs) > 0:
+        print("Hit FLAC heuristic")
+        return min(flacs, key=lambda r: int(r["queue"]))
+    others = filter_str("ftype", ["ogg", "oga", "aac", "m4a", "aiff",
+                                  "wma", "wav", "pcm"])
+    if len(others) > 0:
+        print("Hit other filetype heuristic")
+        return largest(others)
+    print("No heuristics hit. Selecting largest file")
+    return largest(results)
+
+
 class museekcontrol(driver.Driver):
     def __init__(self):
         driver.Driver.__init__(self)
@@ -177,7 +256,8 @@ class museekcontrol(driver.Driver):
         self.s_ticket = {}  # Mapping from queries to tickets
         self.search_number = 0
         self.download_dir = None
-        self.connected = 0
+        self.connected_daemon = 0
+        self.connected_server = 0
         self.count = 0
         self.search_results = dict()
         self.states = {
@@ -252,8 +332,8 @@ class museekcontrol(driver.Driver):
         print("Debug message: %s, %s" % (msg_domain, msg))
 
     def cb_search_results(self, ticket, user, free, speed, queue, results):
-        if want not in ("gsearch", "autodownload"):
-            print("cb search res got called with unknown want")
+        if want not in ("gsearch", "autodownload", "autodownloadmulti"):
+            print("cb search res got called with unknown want: " + want)
         if len(results) > 0:
             output("---------\nSearch: %s Results [%s-%s] from user: %s \n"
                    % (str(self.s_query[ticket]), str(self.search_number),
@@ -263,28 +343,33 @@ class museekcontrol(driver.Driver):
         for result in results:
             path = result[0]
             ftype = path.split('.')[-1].lower()
-            size_kb = result[1] / 1024
+            size_kb = int(result[1]) / 1024
             if size_kb > 1000:
                 size = str(size_kb / 1024) + 'MB'
             else:
                 size = str(size_kb) + 'KB'
 
-            bitrate = "None"
-            length = "0"
+            bitrate = 0
+            length = 0  # In seconds
             if len(result) > 3 and len(result[3]) > 0:
-                bitrate = result[3][0]
+                bitrate = int(result[3][0])
                 if len(result[3]) > 1:
-                    length = result[3][1]
+                    length = int(result[3][1])
 
-            length = int(length)
             # Attempt to calculate length if bitrate and size
             # are given but length is not
-            if length < 10 and bitrate is not "None" and size_kb > 0:
-                length = size_kb / int(bitrate) * 8
+            if length < 10 and bitrate > 0 and size_kb > 0:
+                # sec = kb * (kbit / kb) / (kbit / sec)
+                length = size_kb * 8 / bitrate
+            # Attempt to calculate bitrate if size and length
+            # are given but bitrate is not
+            if bitrate is 0 and length > 0 and size_kb > 0:
+                # (kbit / sec) = kb * (kbit / kb) / sec
+                bitrate = size_kb * 8 / length
             minutes = length / 60
             seconds = str(length - (60 * minutes)) + 's'
             if len(seconds) < 2:
-                seconds = '0' + seconds + 's'
+                seconds = '00' + seconds + 's'
 
             result_info = {"user": user,
                            "path": path,
@@ -292,7 +377,7 @@ class museekcontrol(driver.Driver):
                            "free": free,
                            "speed": speed,
                            "queue": queue,
-                           "size_kb": size_kb,
+                           "size": size_kb,
                            "bitrate": bitrate,
                            "length": length}
             if free:
@@ -302,19 +387,19 @@ class museekcontrol(driver.Driver):
                 free = 'N'
             output("slsk://%s/%s" % (user, path.replace("\\", "/")))
             output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
-                   " Length: " + str(minutes) + ":" + seconds +
+                   " Length: " + str(minutes) + "m" + seconds +
                    " Queue: " + str(queue) + " Speed: " + str(speed) +
                    " Free: " + free)
             output(" ")
         self.search_results[ticket] += user_results
 
     def cb_disconnected(self):
-        self.connected = 0
+        self.connected_daemon = 0
         print "--- Disconnected from the Museek Daemon ---"
         sys.exit()
 
     def cb_login_error(self, reason):
-        self.connected = 0
+        self.connected_daemon = 0
         if reason == "INVPASS":
             print "Couldn't log in: Invalid Password for daemon"
             self.connect_daemon()
@@ -322,14 +407,17 @@ class museekcontrol(driver.Driver):
             print "Couldn't log in: " + reason
 
     def cb_login_ok(self):
-        self.connected = 1
-        print "Login OK"
+        self.connected_daemon = 1
+        print "Daemon login OK"
 
     def cb_server_state(self, state, username):
         if state:
             output("Connected to server as %s" % username)
+            self.connected_server = 1
         else:
             output("Not connected to server")
+            self.connected_server = 0
+            self.connect_server()
 
     # Presumably, this is automatically called upon daemon connect
     def cb_transfer_state(self, downloads, uploads):
@@ -355,19 +443,14 @@ class museekcontrol(driver.Driver):
             print "- - - - - - - - - - - - - - - -"
 
     def search(self, query):
-        if self.connected == 1:
-            msg = messages.Search(0, query)
-            self.send(msg)
-        else:
-            print "Want search but not connected to daemon"
+        msg = messages.Search(0, query)
+        self.send(msg)
 
     def download(self, user, ufile):
-        if self.connected == 1:
-            print "ufile: " + ufile
-            self.send(messages.DownloadFile(user, ufile))
-        else:
-            print "Want dl but not connected to daemon"
+        print "ufile: " + ufile
+        self.send(messages.DownloadFile(user, ufile))
 
+    # Search for 'query' select a file based on a heuristic, and download it
     def autodownload(self, query):
         if query not in self.s_ticket:
             print "Query not in tickets"
@@ -379,12 +462,21 @@ class museekcontrol(driver.Driver):
         results = self.search_results[search_ticket]
         if not results:
             print "No search results for query: " + query
-        choice = results[0]
-        print("Selected %s from %s results" %
+            return
+        choice = select_file(results)
+        print("Selected %s from %s free results" %
               (choice, len(results)))
         choice_user = choice["user"]
         choice_ufile = choice["path"]
+        choice_fname = choice_ufile.split("\\")[-1]
+        # TODO: Fuzzy search, also in entire music library
+        if self.file_exists(choice_fname):
+            print("File %s already downloaded, skipping." % choice_fname)
+            return
         self.send(messages.DownloadFile(choice_user, choice_ufile))
+
+    def file_exists(self, fname):
+        return fname in os.listdir(self.download_dir)
 
 
 if mconfig["connection"]["password"] is None:
@@ -428,13 +520,11 @@ for opts, args in opts:
     elif opts in ("--ad", "--autodownload"):
         query = str(args)
         want = "autodownload"
-        s_time = eval(mconfig['autodownload']['search_time'])
-        print("Searching for %s seconds" % s_time)
-        c.search(query)
-        start(s_time)
-        print "Finished searching"
-        c.autodownload(query)
-        start()
+        autodownload_init([query])
+    elif opts in ("--adm", "--autodownloadmulti"):
+        queries = get_queries(args)
+        want = "autodownloadmulti"
+        autodownload_init(queries)
     elif opts in ("--connect"):
         c.connect_server()
         start()
@@ -451,7 +541,8 @@ for opts, args in opts:
 #       this path from the daemon?
 #   - then search a specified music lib in museekcontrol config
 #   - implement exact match finder first, then fuzzy
-# 2) File selection heuristic
-# 3) Multi-downloader
-#   - text file input, newline separated
+# 2) Multi-downloader
 #   - youtube playlist?
+# 3) If search hasn't started downloading by X seconds, abort transfer,
+#       find another result.
+# 4) Select non free results as last resort and send a message to the user
