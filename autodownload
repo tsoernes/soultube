@@ -186,12 +186,14 @@ def autodownload_init(queries):
         query_clean = filter_query(query)
         print("Cleaned query from: %s to: %s" % (query, query_clean))
         queries_clean.append(query_clean)
-    map(c.search, queries_clean)
-    start(s_time)
-    # can we do something here to stop printing results for
-    # the previously started search?
-    print "Finished searching"
-    map(c.autodownload, queries_clean)
+    for query in queries_clean:
+        print "Starting search for: " + query
+        c.search(query)
+        start(s_time)
+        # can we do something here to stop printing results for
+        # the previously started search?
+        print "Finished searching for: " + query
+        c.autodownload(query)
     start()
 
 
@@ -218,6 +220,7 @@ def get_queries(fpath):
 
 
 def select_file(results):
+    # TODO: SELECT ANOTHER IF ALREADY QUEUED
     def filter_str(param, target):
         return filter(lambda r: r[param].lower() in target, results)
 
