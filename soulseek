@@ -114,7 +114,7 @@ else:
 
 
 def checkUrl(args):
-    url = str(args)
+    url = str(args.strip())
     if url[:7] == "slsk://":
         try:
             user, ufile = urllib.url2pathname(url[7:]).split("/", 1)
