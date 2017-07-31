@@ -198,14 +198,15 @@ def autodownload_init(queries):
 def filter_query(query):
     # Remove ignored words (case insensitive)
     for word in ignore_words:
-        query = query.replace(word, '')
         wrd_rgx = re.compile(re.escape(word), re.IGNORECASE)
         query = wrd_rgx.sub('', query)
     # Remove anything between brackets '[' and ']'
     query = re.sub(r'\[[^)]*\]', '', query)
+    # Remove years e.g. '1997'
+    query = re.sub('\d{4}' '', query)
     # Remove anything but alphanumeric characters and spaces
     query = re.sub('\W+', ' ', query)
-    return query
+    return query.strip()
 
 
 def get_queries(fpath):
