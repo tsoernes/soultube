@@ -203,7 +203,7 @@ def filter_query(query):
     # Remove anything between brackets '[' and ']'
     query = re.sub(r'\[[^)]*\]', '', query)
     # Remove years e.g. '1997'
-    query = re.sub('\d{4}' '', query)
+    query = re.sub('\d{4}', '', query)
     # Remove anything but alphanumeric characters and spaces
     query = re.sub('\W+', ' ', query)
     return query.strip()
@@ -403,9 +403,10 @@ class museekcontrol(driver.Driver):
         self.connected_daemon = 0
         if reason == "INVPASS":
             print "Couldn't log in: Invalid Password for daemon"
-            self.connect_daemon()
+            sys.exit()
         else:
             print "Couldn't log in: " + reason
+            sys.exit()
 
     def cb_login_ok(self):
         self.connected_daemon = 1
@@ -501,7 +502,7 @@ def start(duration=None):
 
 
 c.connect_daemon()
-while not c.connected:
+while not c.connected_daemon:
     c.process()
 # TODO: How does this work with multiple opts? Maybe want to increase search
 # time as one param and autodownload as another etc.
