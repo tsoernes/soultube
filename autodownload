@@ -23,6 +23,7 @@ import time
 from multiprocessing import Process
 import os
 import select
+from itertools import groupby
 import re
 import getopt
 import ConfigParser
@@ -226,6 +227,15 @@ def select_file(results):
 
     def largest(li):
         return max(li, key=lambda r: int(r["size"]))
+
+    # A list of tuples (frequency, e) sorted in decreasing order
+    # of filename frequency
+    def sort_popular(li):
+        fname_sorted = sorted(li, lambda e: e.split("\\")[-1])
+        grouped = [(len(list(group)), key) for key, group
+                   in groupby(fname_sorted)]
+        s_grouped = sorted(grouped, key=lambda t: t[0], reverse=True)
+        return s_grouped
 
     # Select largest filsize mp3 with bitrate over 220; if any:
     mp3s = filter_str("ftype", ["mp3"])
