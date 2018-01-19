@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/python
 
 # Soulseek automatic batch downloader
 # Author: tsoernes
@@ -18,15 +18,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
-import sys
-import urllib
-import time
-from multiprocessing import Process
+import ConfigParser
+import getopt
 import os
 import select
-import getopt
-import ConfigParser
+import sys
+import time
+import urllib
+from multiprocessing import Process
 from time import sleep
+
 try:
     from museek import messages, driver
 except:
@@ -93,11 +94,9 @@ Version: %s
 try:
     opts, args = getopt.getopt(sys.argv[1:], "hc:vi:p:j:l:p:m:b:tar", [
         "help", "config=", "interface=", "password=", "transfers",
-        "monitor-transfers", "gs=", "gsearch=", "version", "log=",
-        "ad=", "autodownload=", "dl=", "download=", "mt", "mtransfers",
-        "abortdown=",
-        "retrydown=", "removedown=", "disconnect",
-        "connect"
+        "monitor-transfers", "gs=", "gsearch=", "version", "log=", "ad=",
+        "autodownload=", "dl=", "download=", "mt", "mtransfers", "abortdown=",
+        "retrydown=", "removedown=", "disconnect", "connect"
     ])
 except getopt.GetoptError:
     usage()
@@ -137,8 +136,8 @@ def handleDownload(args):
     else:
         want = "downfolder"
         ufile = ufile.replace("/", "\\")
-        output("Attempting to download folder contents: %s from %s"
-               % (ufile, user))
+        output("Attempting to download folder contents: %s from %s" % (ufile,
+                                                                       user))
     return user, ufile, want
 
 
@@ -174,7 +173,6 @@ for opts, args in opts:
     elif opts in ("--abortdown", "--removedown", "--retrydown"):
         user, ufile = checkUrl(args)
         want = opts[2:]
-
 
 museekcontrol_config = {
     "connection": {
@@ -256,7 +254,7 @@ update_config()
 class museekcontrol(driver.Driver):
     def __init__(self):
         driver.Driver.__init__(self)
-        self.s_query = {}   # Mapping from tickets to queries
+        self.s_query = {}  # Mapping from tickets to queries
         self.s_ticket = {}  # Mapping from queries to tickets
         self.search_number = 0
         self.connected = 0
@@ -401,9 +399,9 @@ class museekcontrol(driver.Driver):
 
     def cb_search_results(self, ticket, user, free, speed, queue, results):
         if want in ("gsearch", "autodownload") and len(results) > 0:
-            output("---------\nSearch: %s Results [%s-%s] from user: %s \n"
-                   % (str(self.s_query[ticket]), str(self.search_number),
-                      str(self.search_number+len(results)), user))
+            output("---------\nSearch: %s Results [%s-%s] from user: %s \n" %
+                   (str(self.s_query[ticket]), str(self.search_number),
+                    str(self.search_number + len(results)), user))
             self.search_number += len(results)
         user_results = []
         for result in results:
@@ -433,15 +431,17 @@ class museekcontrol(driver.Driver):
             if len(seconds) < 2:
                 seconds = '0' + seconds + 's'
 
-            result_info = {"user": user,
-                           "path": path,
-                           "ftype": ftype,
-                           "free": free,
-                           "speed": speed,
-                           "queue": queue,
-                           "size_kb": size_kb,
-                           "bitrate": bitrate,
-                           "length": length}
+            result_info = {
+                "user": user,
+                "path": path,
+                "ftype": ftype,
+                "free": free,
+                "speed": speed,
+                "queue": queue,
+                "size_kb": size_kb,
+                "bitrate": bitrate,
+                "length": length
+            }
             if free:
                 user_results += result_info
                 free = 'Y'
@@ -450,9 +450,9 @@ class museekcontrol(driver.Driver):
             if want in ("gsearch", "autodownload"):
                 output("slsk://%s/%s" % (user, path.replace("\\", "/")))
                 output("Size: " + str(size) + " Bitrate: " + str(bitrate) +
-                       " Length: " + str(minutes) + ":" + seconds +
-                       " Queue: " + str(queue) + " Speed: " + str(speed) +
-                       " Free: " + free)
+                       " Length: " + str(minutes) + ":" + seconds + " Queue: "
+                       + str(queue) + " Speed: " + str(speed) + " Free: " +
+                       free)
                 output(" ")
         search_results[ticket] += user_results
 
@@ -478,8 +478,8 @@ class museekcontrol(driver.Driver):
 
     def cb_server_state(self, state, username):
         if state:
-            output("Connected to server, username: %s (%s)"
-                   % (username, state))
+            output("Connected to server, username: %s (%s)" % (username,
+                                                               state))
         else:
             output("Not connected to server (%s)" % state)
 
